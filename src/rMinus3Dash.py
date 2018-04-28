@@ -4,23 +4,21 @@ import time
 import itertools
 import numpy as np
 import json
-import xml.etree.ElementTree as ET
+import itertools
 import rospy
 from std_msgs.msg import String
 import dynamixel
 import os
 import rospkg
-
-#OFFSETS------------------------------------------------------------------------------
+#--------------------------------------------------------------OFFSETS------------------------------------------------------------------------------
+# darwin = {1: 90, 2: -90, 3: 67.5, 4: -67.5, 7: 45, 8: -10, 9: 'i', 10: 'i', 13: 'i', 14: 'i', 17: 'i', 18: 'i'}
 
 darwin = {1: 90, 2: -90, 3: 67.5, 4: -67.5, 7: 45, 8: -10, 9: 'i', 10: 'i', 13: 'i', 14: 'i', 17: 'i', 18: 'i'}
 darwin1 = {13: -12, 14: 10}
-
+#abmath = {11: 5, 12: -5, 13: -10, 14: 10, 15: -5, 16: 5}
 abmath = {11: 7, 12: -5}
 hand = {5: 60, 6: -60}
-
 #---------------------------------------------------------------------------------------------------------------------------------------------------
-
 rp = rospkg.RosPack()
 package_path = rp.get_path("dash")
 path = os.path.join(package_path, "include", "super.json")
@@ -36,9 +34,9 @@ class Dynamixel(object) :
 
 		dxl = dynamixel.Dxl(ports[default_id])
 		self.ids = dxl.scan(25)
-		print ( self.ids)
-		#dxl.enable_torque(self.ids)
-		if len(self.ids)<lock-1  :
+		print self.ids
+		# dxl.enable_torque(self.ids)
+		if len(self.ids)<lock-1 :
 			raise RuntimeError("all the motors were not detected")
 
 		dxl.set_moving_speed(dict(zip(self.ids,itertools.repeat(1000))))
@@ -62,12 +60,12 @@ class Dynamixel(object) :
 		return dxl.get_present_position((ids,))	
 class JSON(object) :
 	def __init__(self,file) :
-            try :
-                with open(file,'r') as f:
-                    self.data = json.load(f)
-            except :
-                raise RuntimeError("File not found")
-
+		try :
+			with open(file,"r") as f :
+				self.data = json.load(f)
+		except :
+			raise RuntimeError("File not found")
+		
 	def parse(self,motion) :
 		p_frame = str()
 		p_pose = str()
@@ -165,6 +163,7 @@ class Motionset(object) :
 			self.init = True
 			for motion in self.motion :
 				for offset in self.offset :
+					#for m in motion :
 					motion.setoffset(offset)
 				motion.motion(speed)
 			
@@ -183,7 +182,7 @@ class Custom(object) :
 		for motionset in self.motionset :
 			if not(spd) :
 				speed = motionset.speed
-
+  
 			motionset.run(speed)
 
 		
@@ -192,10 +191,10 @@ json = JSON(path)
 balance = Motionset(json.parse(motion="152 Balance"),offset=[darwin,hand])
 w1 = Motionset(json.parse(motion="32 F_S_L"),speed=2.1,offset=[darwin])
 w2 = Motionset(json.parse(motion="33 "),speed=2.1,offset=[darwin])
-w3 = Motionset(json.parse(motion="38 F_M_R"),speed=3.0,offset=[darwin])
-w4 = Motionset(json.parse(motion="39 "),speed=3.0,offset=[darwin])
-w5 = Motionset(json.parse(motion="36 F_M_L"),speed=3.0,offset=[darwin])
-w6 = Motionset(json.parse(motion="37 "),speed=3.0,offset=[darwin])
+w3 = Motionset(json.parse(motion="38 F_M_R"),speed=3.5,offset=[darwin])
+w4 = Motionset(json.parse(motion="39 "),speed=3.1,offset=[darwin])
+w5 = Motionset(json.parse(motion="36 F_M_L"),speed=3.5,offset=[darwin])
+w6 = Motionset(json.parse(motion="37 "),speed=3.1,offset=[darwin])
 
 walk = Custom(json.setparse("22 F_S_L",offset=[darwin]))
 
@@ -234,57 +233,39 @@ r_step = Custom(json.setparse("25 F_E_R",offset=[darwin, hand]))
 kick = Custom(json.setparse("26 F_PShoot_R",offset = [darwin, hand]))
 rskick = Motionset(json.parse("39 Pass_R"),speed=1.5, offset=[darwin])
 #-----------------------------------------------------------------------------------------------------------------------------------------------------
-speed = 0.2
-count_left = 0
-count_right = 0
+
+tilt = 20
+tilt_inst = 2.0
+
 def listener(data) :
-	global speed,count_left,count_right	
-	rospy.loginfo(rospy.get_caller_id() + 'I heard %s', data.data)
-	#print data.data
-
+	global tilt_ang
+        rospy.loginfo(rospy.get_caller_id() + 'I heard %s', data.data)
+        print data.data
 	if data.data == "forward":
+		walk_motion.run()
 		
-		walk_motion.run(spd = speed)
-		time.sleep(0.05)
-	elif data.data == "backward" :
-
-		back_walk.run(spd = speed)
-		time.sleep(0.01)
 	elif data.data == "right" :
-		#if state == 0:
 		r_turn.run()
-		time.sleep(0.05)
-		count_right += 1
-		speed = 0.2
-
 	elif data.data == "left" :
-		#if state == 0:
 		l_turn.run()
-		count_left += 1
-		time.sleep(0.05)
-		speed = 0.2
+
+
+	elif data.data == "tilt_d" :
+		ddxl.angleWrite(tilt,tilt_inst)
+
+	if ddxl.returnPos(20)[20] < 1.0 :
+		ddxl.angleWrite(20,40)
+		time.sleep(0.001)
+		back_walk.run()
 		
-	'''elif data.data == "thresh" :
-		turn = count_left - count_right
-		if turn > 0 :
-			while turn > 0 :
-				left_side_step.run()
-				turn -= 1
-
-		else :
-			while turn < 0 :
-				right_side_step.run()
-				turn += 1'''
-			
+		
 if __name__ == "__main__":
-	d = Dynamixel(lock=20)
-	d.angleWrite(20,65)
-
+	ddxl = Dynamixel(lock=20)
+	ddxl.angleWrite(19,0)
+	ddxl.angleWrite(20,40)
 	balance.run()
-	raw_input("Proceed?")
-	try :
-		rospy.init_node('Dash', anonymous=True)
-		rospy.Subscriber('get_area',String,listener,queue_size=1)
-		rospy.spin()
-	except KeyboardInterrupt :
-		balance.run()
+	raw_input("Proceed da?")
+        rospy.init_node('Dash', anonymous=True)
+        rospy.Subscriber('get_area',String,listener,queue_size=1)
+        rospy.spin()
+	
